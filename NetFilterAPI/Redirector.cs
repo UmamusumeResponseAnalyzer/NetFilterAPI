@@ -8,6 +8,7 @@ public static class Redirector
     {
         AIO_FILTERLOOPBACK,
         AIO_FILTERINTRANET, // LAN
+        AIO_FILTERSELF,
         AIO_FILTERPARENT,
         AIO_FILTERICMP,
         AIO_FILTERTCP,
@@ -25,6 +26,7 @@ public static class Redirector
         AIO_TGTPORT,
         AIO_TGTUSER,
         AIO_TGTPASS,
+        HT_PROXYPID,
 
         AIO_CLRNAME,
         AIO_ADDNAME,
@@ -44,8 +46,23 @@ public static class Redirector
         return aio_dial(name, value);
     }
 
-    public static Task<bool> InitAsync()
+    public static Task<bool> InitAsync(bool isHttpProxy)
     {
+        if (isHttpProxy)
+        {
+            var p = new System.Diagnostics.Process();
+            p.StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "netstat",
+                Arguments = "-ano",
+                RedirectStandardOutput = true
+            };
+            p.Start();
+            var line = p.StandardOutput.ReadToEnd().Split(Environment.NewLine).Where(x => x.Contains("LISTENING") && x.Contains(NFAPI.Port.ToString())).First();
+            var pid = line[(line.LastIndexOf("LISTENING") + 9)..].Trim();
+            Dial(NameList.HT_PROXYPID, pid);
+            return Task.Run(ht_start);
+        }
         return Task.Run(aio_init);
     }
 
@@ -79,4 +96,7 @@ public static class Redirector
 
     [DllImport(Redirector_bin, CallingConvention = CallingConvention.Cdecl)]
     private static extern ulong aio_getDL();
+
+    [DllImport(Redirector_bin, CallingConvention = CallingConvention.Cdecl)]
+    private static extern bool ht_start();
 }

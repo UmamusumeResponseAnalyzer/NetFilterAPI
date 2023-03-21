@@ -4,20 +4,25 @@ using static NetFilterAPI.Redirector;
 
 namespace NetFilterAPI;
 
-public class NFAPI
+public static class NFAPI
 {
     private static readonly ServiceController nfService = new("netfilter2");
     private static readonly string systemDriver = $"{Environment.SystemDirectory}\\drivers\\netfilter2.sys";
     private static string nfDriver = "nfdriver.sys";
 
+    public static List<string> HandleList = new();
+    public static List<string> BypassList = new();
+    public static string Host = string.Empty;
+    public static int Port = 0;
+
     public static void EnableLog(bool enabled) => Dial(NameList.AIO_PRINTLOG, enabled);
-    public static void SetDriverPath(string path) => nfDriver = path;
-    public async Task StartAsync(string host, int port, IEnumerable<string> handle, IEnumerable<string> bypass = default!, (string username, string password) auth = default)
+    public static async Task StartAsync(bool isHttpProxy = false, string username = null!, string password = null!)
     {
         CheckDriver();
         Dial(NameList.AIO_FILTERLOOPBACK, false);
         Dial(NameList.AIO_FILTERINTRANET, false);
-        Dial(NameList.AIO_FILTERPARENT, true);
+        Dial(NameList.AIO_FILTERSELF, false);
+        Dial(NameList.AIO_FILTERPARENT, false);
         Dial(NameList.AIO_FILTERICMP, false);
 
         Dial(NameList.AIO_FILTERTCP, true);
@@ -31,23 +36,23 @@ public class NFAPI
         Dial(NameList.AIO_DNSPORT, "53");
 
         // Server
-        Dial(NameList.AIO_TGTHOST, host);
-        Dial(NameList.AIO_TGTPORT, port.ToString());
+        Dial(NameList.AIO_TGTHOST, Host);
+        Dial(NameList.AIO_TGTPORT, Port.ToString());
 
-        if (auth != default && auth.username != default && auth.password != default)
+        if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
         {
-            Dial(NameList.AIO_TGTUSER, auth.username);
-            Dial(NameList.AIO_TGTPASS, auth.password);
+            Dial(NameList.AIO_TGTUSER, username);
+            Dial(NameList.AIO_TGTPASS, password);
         }
 
         // Mode Rule
-        DialRule(handle, bypass);
+        DialRule(HandleList, BypassList);
 
-        if (!await InitAsync())
+        if (!await InitAsync(isHttpProxy))
             throw new Exception("Redirector start failed.");
     }
 
-    public Task StopAsync()
+    public static Task StopAsync()
     {
         return FreeAsync();
     }
@@ -57,7 +62,7 @@ public class NFAPI
         return $"{string.Join("\n", rules)}\n" + "Above rules does not conform to C++ regular expression syntax";
     }
 
-    private void DialRule(IEnumerable<string> handle, IEnumerable<string> bypass)
+    private static void DialRule(IEnumerable<string> handle, IEnumerable<string> bypass)
     {
         Dial(NameList.AIO_CLRNAME, "");
         var invalidList = new List<string>();
@@ -85,8 +90,8 @@ public class NFAPI
     }
 
     #region DriverUtil
-
-    private static void CheckDriver()
+    public static void SetDriverPath(string path) => nfDriver = path;
+    internal static void CheckDriver()
     {
         var binFileVersion = FileVersionInfo.GetVersionInfo(nfDriver).FileVersion;
         var systemFileVersion = FileVersionInfo.GetVersionInfo(systemDriver).FileVersion;
@@ -177,6 +182,5 @@ public class NFAPI
 
         return true;
     }
-
     #endregion
 }
